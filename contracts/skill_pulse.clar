@@ -1,20 +1,23 @@
 ;; SkillPulse Contract
 ;; Handles career development goals and mentorship matching
 
-;; Constants
+;; Constants 
 (define-constant contract-owner tx-sender)
 (define-constant err-owner-only (err u100))
 (define-constant err-not-registered (err u101))
 (define-constant err-already-registered (err u102))
 (define-constant err-goal-not-found (err u103))
 (define-constant err-invalid-status (err u104))
+(define-constant err-milestone-not-found (err u105))
+(define-constant err-invalid-reward (err u106))
 
 ;; Data Variables
 (define-map Users principal 
   {
     is-mentor: bool,
     reputation: uint,
-    skills: (list 10 (string-ascii 64))
+    skills: (list 10 (string-ascii 64)),
+    rewards-balance: uint
   }
 )
 
@@ -25,11 +28,22 @@
     description: (string-ascii 256),
     status: (string-ascii 20),
     mentor: (optional principal),
-    created-at: uint
+    created-at: uint,
+    milestones: (list 5 uint)
+  }
+)
+
+(define-map Milestones uint
+  {
+    goal-id: uint,
+    description: (string-ascii 256),
+    reward-amount: uint,
+    completed: bool
   }
 )
 
 (define-data-var goal-id-nonce uint u0)
+(define-data-var milestone-id-nonce uint u0)
 
 ;; Private Functions
 (define-private (is-user-registered (user principal))
@@ -43,7 +57,8 @@
     (ok (map-set Users tx-sender {
       is-mentor: is-mentor,
       reputation: u0,
-      skills: skills
+      skills: skills,
+      rewards-balance: u0
     }))
   )
 )
@@ -61,12 +76,63 @@
           description: description,
           status: "active",
           mentor: none,
-          created-at: block-height
+          created-at: block-height,
+          milestones: (list)
         })
         (var-set goal-id-nonce (+ new-id u1))
         (ok new-id)
       )
       err-not-registered
+    )
+  )
+)
+
+(define-public (add-milestone (goal-id uint) (description (string-ascii 256)) (reward-amount uint))
+  (let
+    (
+      (goal (unwrap! (map-get? Goals goal-id) err-goal-not-found))
+      (new-milestone-id (var-get milestone-id-nonce))
+    )
+    (if (is-eq tx-sender (get owner goal))
+      (begin
+        (map-set Milestones new-milestone-id {
+          goal-id: goal-id,
+          description: description,
+          reward-amount: reward-amount,
+          completed: false
+        })
+        (map-set Goals goal-id (merge goal {
+          milestones: (unwrap! (as-max-len? 
+            (append (get milestones goal) new-milestone-id) u5) 
+            err-invalid-status)
+        }))
+        (var-set milestone-id-nonce (+ new-milestone-id u1))
+        (ok new-milestone-id)
+      )
+      err-owner-only
+    )
+  )
+)
+
+(define-public (complete-milestone (milestone-id uint))
+  (let
+    (
+      (milestone (unwrap! (map-get? Milestones milestone-id) err-milestone-not-found))
+      (goal (unwrap! (map-get? Goals (get goal-id milestone)) err-goal-not-found))
+      (user-data (unwrap! (map-get? Users tx-sender) err-not-registered))
+    )
+    (if (and 
+          (is-eq tx-sender (get owner goal))
+          (not (get completed milestone))
+        )
+      (begin
+        (map-set Milestones milestone-id (merge milestone {completed: true}))
+        (map-set Users tx-sender (merge user-data {
+          rewards-balance: (+ (get rewards-balance user-data) (get reward-amount milestone))
+        }))
+        (ok true)
+      )
+      err-invalid-reward
     )
   )
 )
@@ -123,10 +189,14 @@
   (map-get? Goals goal-id)
 )
 
+(define-read-only (get-milestone (milestone-id uint))
+  (map-get? Milestones milestone-id)
+)
+
 (define-read-only (get-user-goals (user principal))
   (filter goals-owner-filter (map-to-list Goals))
 )
 
-(define-private (goals-owner-filter (goal {owner: principal, title: (string-ascii 64), description: (string-ascii 256), status: (string-ascii 20), mentor: (optional principal), created-at: uint}))
+(define-private (goals-owner-filter (goal {owner: principal, title: (string-ascii 64), description: (string-ascii 256), status: (string-ascii 20), mentor: (optional principal), created-at: uint, milestones: (list 5 uint)}))
   (is-eq (get owner goal) tx-sender)
 )
