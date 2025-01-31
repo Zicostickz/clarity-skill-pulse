@@ -22,7 +22,6 @@ Clarinet.test({
     
     block.receipts[0].result.expectOk();
     
-    // Verify registration
     let userInfo = chain.callReadOnlyFn(
       'skill_pulse',
       'get-user-info',
@@ -33,57 +32,64 @@ Clarinet.test({
     let userData = userInfo.result.expectSome().expectTuple();
     assertEquals(userData['is-mentor'], types.bool(false));
     assertEquals(userData['reputation'], types.uint(0));
+    assertEquals(userData['rewards-balance'], types.uint(0));
   }
 });
 
 Clarinet.test({
-  name: "Test goal creation and management",
+  name: "Test milestone creation and completion",
   async fn(chain: Chain, accounts: Map<string, Account>) {
     const user1 = accounts.get('wallet_1')!;
-    const mentor = accounts.get('wallet_2')!;
     
-    // Register user and mentor
+    // Register user
     let setup = chain.mineBlock([
       Tx.contractCall('skill_pulse', 'register-user', [
         types.bool(false),
         types.list([types.ascii("javascript")])
-      ], user1.address),
-      Tx.contractCall('skill_pulse', 'register-user', [
-        types.bool(true),
-        types.list([types.ascii("javascript")])
-      ], mentor.address)
+      ], user1.address)
     ]);
     
-    setup.receipts.map(receipt => receipt.result.expectOk());
+    setup.receipts[0].result.expectOk();
     
     // Create goal
-    let block = chain.mineBlock([
+    let createGoal = chain.mineBlock([
       Tx.contractCall('skill_pulse', 'create-goal', [
         types.ascii("Learn Clarity"),
         types.ascii("Master Clarity smart contract development")
       ], user1.address)
     ]);
     
-    let goalId = block.receipts[0].result.expectOk();
+    let goalId = createGoal.receipts[0].result.expectOk();
     
-    // Assign mentor
-    let assignMentor = chain.mineBlock([
-      Tx.contractCall('skill_pulse', 'assign-mentor', [
+    // Add milestone
+    let addMilestone = chain.mineBlock([
+      Tx.contractCall('skill_pulse', 'add-milestone', [
         goalId,
-        types.principal(mentor.address)
+        types.ascii("Complete basic Clarity tutorial"),
+        types.uint(100)
       ], user1.address)
     ]);
     
-    assignMentor.receipts[0].result.expectOk();
+    let milestoneId = addMilestone.receipts[0].result.expectOk();
     
-    // Update goal status
-    let updateStatus = chain.mineBlock([
-      Tx.contractCall('skill_pulse', 'update-goal-status', [
-        goalId,
-        types.ascii("completed")
+    // Complete milestone
+    let completeMilestone = chain.mineBlock([
+      Tx.contractCall('skill_pulse', 'complete-milestone', [
+        milestoneId
       ], user1.address)
     ]);
     
-    updateStatus.receipts[0].result.expectOk();
+    completeMilestone.receipts[0].result.expectOk();
+    
+    // Verify rewards balance
+    let userInfo = chain.callReadOnlyFn(
+      'skill_pulse',
+      'get-user-info',
+      [types.principal(user1.address)],
+      user1.address
+    );
+    
+    let userData = userInfo.result.expectSome().expectTuple();
+    assertEquals(userData['rewards-balance'], types.uint(100));
   }
 });
