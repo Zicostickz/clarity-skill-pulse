@@ -16,14 +16,14 @@ A blockchain-based platform for tracking career development goals and mentor mat
 - Progress tracking 
 - Milestone creation and completion validation
 - Reputation system for mentors and mentees
-- Milestone-based rewards system
+- Milestone-based rewards system with validation
 - User rewards balance management
 
 ## Milestone System
 Users can now:
 - Create milestones for their goals with reward amounts
 - Track milestone completion progress
-- Earn rewards for completing milestones
+- Earn rewards for completing milestones (max 10,000 per milestone)
 - Accumulate rewards in their user profile
 
-The milestone system provides additional motivation and structure for achieving career development goals.
+The milestone system provides additional motivation and structure for achieving career development goals while maintaining reasonable reward limits.
