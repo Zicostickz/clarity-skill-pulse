@@ -12,6 +12,8 @@
 (define-constant err-invalid-reward (err u106))
 (define-constant err-invalid-milestone (err u107))
 (define-constant err-empty-description (err u108))
+(define-constant err-empty-title (err u109))
+(define-constant err-goal-inactive (err u110))
 
 ;; Configuration Constants
 (define-constant MAX-REWARD-AMOUNT u10000)
@@ -63,11 +65,18 @@
   )
 )
 
-(define-private (validate-description (description (string-ascii 256)))
-  (not (is-eq description ""))
+(define-private (validate-string (text (string-ascii 256)))
+  (not (is-eq text ""))
 )
 
-;; Public Functions
+(define-private (is-goal-active (goal-id uint))
+  (match (get-goal goal-id)
+    goal (is-eq (get status goal) "active")
+    false
+  )
+)
+
+;; Read-only Functions
 (define-read-only (get-milestone (milestone-id uint))
   (map-get? Milestones milestone-id)
 )
@@ -76,6 +85,18 @@
   (map-get? Goals goal-id)
 )
 
+(define-read-only (get-user-profile (user principal))
+  (map-get? Users user)
+)
+
+(define-read-only (get-goal-milestone-count (goal-id uint))
+  (match (get-goal goal-id)
+    goal (len (get milestones goal))
+    u0
+  )
+)
+
+;; Public Functions
 (define-public (register-user (is-mentor bool) (skills (list 10 (string-ascii 64))))
   (if (is-user-registered tx-sender)
     err-already-registered
@@ -93,22 +114,25 @@
     (
       (new-id (var-get goal-id-nonce))
     )
-    (if (and (is-user-registered tx-sender) (validate-description description))
-      (begin
-        (map-set Goals new-id {
-          owner: tx-sender,
-          title: title,
-          description: description,
-          status: "active",
-          mentor: none,
-          created-at: block-height,
-          milestones: (list)
-        })
-        (var-set goal-id-nonce (+ new-id u1))
-        (print { type: "goal-created", goal-id: new-id, owner: tx-sender })
-        (ok new-id)
+    (if (not (validate-string title))
+      err-empty-title
+      (if (and (is-user-registered tx-sender) (validate-string description))
+        (begin
+          (map-set Goals new-id {
+            owner: tx-sender,
+            title: title,
+            description: description,
+            status: "active",
+            mentor: none,
+            created-at: block-height,
+            milestones: (list)
+          })
+          (var-set goal-id-nonce (+ new-id u1))
+          (print { type: "goal-created", goal-id: new-id, owner: tx-sender })
+          (ok new-id)
+        )
+        err-not-registered
       )
-      err-not-registered
     )
   )
 )
@@ -119,28 +143,31 @@
       (goal (unwrap! (map-get? Goals goal-id) err-goal-not-found))
       (new-milestone-id (var-get milestone-id-nonce))
     )
-    (if (not (validate-description description))
-      err-empty-description
-      (if (not (validate-reward-amount reward-amount))
-        err-invalid-milestone
-        (if (is-eq tx-sender (get owner goal))
-          (begin
-            (map-set Milestones new-milestone-id {
-              goal-id: goal-id,
-              description: description,
-              reward-amount: reward-amount,
-              completed: false
-            })
-            (map-set Goals goal-id (merge goal {
-              milestones: (unwrap! (as-max-len? 
-                (append (get milestones goal) new-milestone-id) u5) 
-                err-invalid-status)
-            }))
-            (var-set milestone-id-nonce (+ new-milestone-id u1))
-            (print { type: "milestone-added", milestone-id: new-milestone-id, goal-id: goal-id })
-            (ok new-milestone-id)
+    (if (not (is-goal-active goal-id))
+      err-goal-inactive
+      (if (not (validate-string description))
+        err-empty-description
+        (if (not (validate-reward-amount reward-amount))
+          err-invalid-milestone
+          (if (is-eq tx-sender (get owner goal))
+            (begin
+              (map-set Milestones new-milestone-id {
+                goal-id: goal-id,
+                description: description,
+                reward-amount: reward-amount,
+                completed: false
+              })
+              (map-set Goals goal-id (merge goal {
+                milestones: (unwrap! (as-max-len? 
+                  (append (get milestones goal) new-milestone-id) u5) 
+                  err-invalid-status)
+              }))
+              (var-set milestone-id-nonce (+ new-milestone-id u1))
+              (print { type: "milestone-added", milestone-id: new-milestone-id, goal-id: goal-id })
+              (ok new-milestone-id)
+            )
+            err-owner-only
           )
-          err-owner-only
         )
       )
     )
