@@ -22,7 +22,17 @@ Clarinet.test({
     
     setup.receipts[0].result.expectOk();
     
-    // Create goal
+    // Try to create goal with empty title
+    let createEmptyTitleGoal = chain.mineBlock([
+      Tx.contractCall('skill_pulse', 'create-goal', [
+        types.ascii(""),
+        types.ascii("Master Clarity smart contract development")
+      ], user1.address)
+    ]);
+    
+    createEmptyTitleGoal.receipts[0].result.expectErr(types.uint(109));
+    
+    // Create valid goal
     let createGoal = chain.mineBlock([
       Tx.contractCall('skill_pulse', 'create-goal', [
         types.ascii("Learn Clarity"),
