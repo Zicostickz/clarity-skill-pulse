@@ -7,8 +7,6 @@ import {
 } from 'https://deno.land/x/clarinet@v1.0.0/index.ts';
 import { assertEquals } from 'https://deno.land/std@0.90.0/testing/asserts.ts';
 
-// Previous tests remain unchanged...
-
 Clarinet.test({
   name: "Ensure milestone reward validation works",
   async fn(chain: Chain, accounts: Map<string, Account>) {
@@ -24,7 +22,17 @@ Clarinet.test({
     
     setup.receipts[0].result.expectOk();
     
-    // Create goal
+    // Try to create goal with empty title
+    let createEmptyTitleGoal = chain.mineBlock([
+      Tx.contractCall('skill_pulse', 'create-goal', [
+        types.ascii(""),
+        types.ascii("Master Clarity smart contract development")
+      ], user1.address)
+    ]);
+    
+    createEmptyTitleGoal.receipts[0].result.expectErr(types.uint(109));
+    
+    // Create valid goal
     let createGoal = chain.mineBlock([
       Tx.contractCall('skill_pulse', 'create-goal', [
         types.ascii("Learn Clarity"),
@@ -44,6 +52,28 @@ Clarinet.test({
     ]);
     
     addInvalidMilestone.receipts[0].result.expectErr(types.uint(107));
+    
+    // Try to add milestone with zero reward
+    let addZeroRewardMilestone = chain.mineBlock([
+      Tx.contractCall('skill_pulse', 'add-milestone', [
+        goalId,
+        types.ascii("Complete basic Clarity tutorial"),
+        types.uint(0)
+      ], user1.address)
+    ]);
+    
+    addZeroRewardMilestone.receipts[0].result.expectErr(types.uint(107));
+    
+    // Try to add milestone with empty description
+    let addEmptyDescriptionMilestone = chain.mineBlock([
+      Tx.contractCall('skill_pulse', 'add-milestone', [
+        goalId,
+        types.ascii(""),
+        types.uint(100)
+      ], user1.address)
+    ]);
+    
+    addEmptyDescriptionMilestone.receipts[0].result.expectErr(types.uint(108));
     
     // Add valid milestone
     let addValidMilestone = chain.mineBlock([
